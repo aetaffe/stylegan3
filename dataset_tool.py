@@ -66,8 +66,8 @@ def is_image_ext(fname: Union[str, Path]) -> bool:
 
 #----------------------------------------------------------------------------
 
-def open_image_folder(source_dir, *, max_images: Optional[int]):
-    input_images = [str(f) for f in sorted(Path(source_dir).rglob('*')) if is_image_ext(f) and os.path.isfile(f)]
+def open_image_mask_folder(source_dir, *, max_images: Optional[int]):
+    input_images = [str(f) for f in sorted(Path(source_dir).rglob('*.jpg')) if is_image_ext(f) and os.path.isfile(f)]
 
     # Load labels.
     labels = {}
@@ -87,7 +87,10 @@ def open_image_folder(source_dir, *, max_images: Optional[int]):
             arch_fname = os.path.relpath(fname, source_dir)
             arch_fname = arch_fname.replace('\\', '/')
             img = np.array(PIL.Image.open(fname))
-            yield dict(img=img, label=labels.get(arch_fname))
+            mask_fname = fname.replace('.jpg', '.json')
+            with open(mask_fname, 'r') as f:
+                mask = json.load(f)
+            yield dict(img=img, label=labels.get(arch_fname), mask=mask)
             if idx >= max_idx-1:
                 break
     return max_idx, iterate_images()
@@ -269,7 +272,7 @@ def open_dataset(source, *, max_images: Optional[int]):
         if source.rstrip('/').endswith('_lmdb'):
             return open_lmdb(source, max_images=max_images)
         else:
-            return open_image_folder(source, max_images=max_images)
+            return open_image_mask_folder(source, max_images=max_images)
     elif os.path.isfile(source):
         if os.path.basename(source) == 'cifar-10-python.tar.gz':
             return open_cifar10(source, max_images=max_images)
@@ -407,6 +410,7 @@ def convert_dataset(
     for idx, image in tqdm(enumerate(input_iter), total=num_files):
         idx_str = f'{idx:08d}'
         archive_fname = f'{idx_str[:5]}/img{idx_str}.png'
+        mask_archive_fname = f'{idx_str[:5]}/img{idx_str}.json'
 
         # Apply crop and resize.
         img = transform_image(image['img'])
@@ -429,7 +433,7 @@ def convert_dataset(
             height = dataset_attrs['height']
             if width != height:
                 error(f'Image dimensions after scale and crop are required to be square.  Got {width}x{height}')
-            if dataset_attrs['channels'] not in [1, 3]:
+            if dataset_attrs['channels'] not in [1, 3, 4]:
                 error('Input images must be stored as RGB or grayscale')
             if width != 2 ** int(np.floor(np.log2(width))):
                 error('Image width/height after scale and crop are required to be power-of-two')
@@ -443,11 +447,11 @@ def convert_dataset(
         img.save(image_bits, format='png', compress_level=0, optimize=False)
         save_bytes(os.path.join(archive_root_dir, archive_fname), image_bits.getbuffer())
         labels.append([archive_fname, image['label']] if image['label'] is not None else None)
+        save_bytes(os.path.join(archive_root_dir, mask_archive_fname), json.dumps(image['mask']))
 
     metadata = {
         'labels': labels if all(x is not None for x in labels) else None
     }
-    save_bytes(os.path.join(archive_root_dir, 'dataset.json'), json.dumps(metadata))
     close_dest()
 
 #----------------------------------------------------------------------------
