@@ -326,13 +326,15 @@ def open_dest(dest: str) -> Tuple[str, Callable[[str, Union[bytes, str]], None],
 @click.option('--max-images', help='Output only up to `max-images` images', type=int, default=None)
 @click.option('--transform', help='Input crop/resize mode', type=click.Choice(['center-crop', 'center-crop-wide']))
 @click.option('--resolution', help='Output resolution (e.g., \'512x512\')', metavar='WxH', type=parse_tuple)
+@click.option('--resize-size', help='resize image to a square of size `resize`', type=int, default=None)
 def convert_dataset(
     ctx: click.Context,
     source: str,
     dest: str,
     max_images: Optional[int],
     transform: Optional[str],
-    resolution: Optional[Tuple[int, int]]
+    resolution: Optional[Tuple[int, int]],
+    resize_size: Optional[int]
 ):
     """Convert an image dataset into a dataset archive usable with StyleGAN2 ADA PyTorch.
 
@@ -427,6 +429,9 @@ def convert_dataset(
             'height': img.shape[0],
             'channels': channels
         }
+        if resize_size:
+            cur_image_attrs['width'] = cur_image_attrs['height'] = resize_size
+
         if dataset_attrs is None:
             dataset_attrs = cur_image_attrs
             width = dataset_attrs['width']
@@ -443,6 +448,8 @@ def convert_dataset(
 
         # Save the image as an uncompressed PNG.
         img = PIL.Image.fromarray(img, { 1: 'L', 3: 'RGB' }[channels])
+        if resize_size:
+            img = img.resize((resize_size, resize_size), resample=PIL.Image.LANCZOS)
         image_bits = io.BytesIO()
         img.save(image_bits, format='png', compress_level=0, optimize=False)
         save_bytes(os.path.join(archive_root_dir, archive_fname), image_bits.getbuffer())
