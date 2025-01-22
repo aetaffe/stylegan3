@@ -15,6 +15,7 @@ import PIL.Image
 import json
 import torch
 import dnnlib
+import supervision as sv
 
 try:
     import pyspng
@@ -236,3 +237,65 @@ class ImageFolderDataset(Dataset):
         return labels
 
 #----------------------------------------------------------------------------
+
+# My code starts here
+
+class ImageSegmentationDataset(ImageFolderDataset):
+    def __init__(self,
+        path,                   # Path to directory or zip.
+        resolution      = None, # Ensure specific resolution, None = highest available.
+        **super_kwargs,         # Additional arguments for the Dataset base class.
+    ):
+        super().__init__(path, resolution, **super_kwargs)
+
+    @property
+    def num_channels(self):
+        assert len(self.image_shape) == 3 # CHW
+        return self.image_shape[0] + 1 # Add 1 for segmentation mask
+
+    def _load_image(self, raw_idx):
+        fname = self._image_fnames[raw_idx]
+        with self._open_file(fname) as f:
+            if pyspng is not None and self._file_ext(fname) == '.png':
+                image = pyspng.load(f.read())
+            else:
+                image = np.array(PIL.Image.open(f))
+        if image.ndim == 2:
+            image = image[:, :, np.newaxis] # HW => HWC
+        image = image.transpose(2, 0, 1) # HWC => CHW
+        return image, fname
+
+    @staticmethod
+    def _polygon_to_mask(polygons, width, height):
+        mask = np.zeros((height, width))
+        for shape in polygons:
+            if shape['label'] == 'AimingBeam':
+                points = shape['points']
+                instr_mask = sv.polygon_to_mask(np.array(points), (width, height))
+                instr_mask = np.where(instr_mask == 1, 255, 0)
+                mask += instr_mask
+        return mask
+
+    def _get_segmentation_mask(self, fname, img_width, img_height):
+        mask_json_fname = os.path.splitext(fname)[0] + '.json'
+        with self._open_file(mask_json_fname) as f:
+            mask_json = json.load(f)
+            mask = self._polygon_to_mask(mask_json['shapes'], mask_json['imageWidth'], mask_json['imageHeight']).astype(np.uint8)
+            mask = np.array(PIL.Image.fromarray(mask).resize((img_width, img_height), resample=PIL.Image.NEAREST))
+        return mask
+
+    def __getitem__(self, idx):
+        image, fname = self._load_image(self._raw_idx[idx])
+        assert isinstance(image, np.ndarray)
+        assert list(image.shape) == self.image_shape
+        seg_mask = self._get_segmentation_mask(fname=fname, img_width=image.shape[2], img_height=image.shape[1])
+        if seg_mask is None:
+            raise IOError(f'No seg_mask found for image file: {fname}')
+        image_mask = np.concatenate([image, seg_mask[np.newaxis, ...]])
+        assert isinstance(image_mask, np.ndarray)
+        assert image_mask.dtype == np.uint8
+        if self._xflip[idx]:
+            assert image_mask.ndim == 3 # CHW
+            image_mask = image_mask[:, :, ::-1]
+        return image_mask.copy(), self.get_label(idx)
+

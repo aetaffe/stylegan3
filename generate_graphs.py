@@ -16,7 +16,7 @@ def get_stats_dict(stats_path):
 
 
 if __name__ == '__main__':
-    stats_path = '/Users/alex/research/SyntheticData/stylegan3/stats_1.jsonl'
+    stats_path = '/home/alex/stylegan-output/Run4-256x256-no-phantom-gama4/stats.jsonl'
     stats = get_stats_dict(stats_path)
     loss_g_mean = []
     loss_d_mean = []
@@ -29,10 +29,10 @@ if __name__ == '__main__':
         k_imgs.append(item['mean'] + 900)
     plt.plot(k_imgs, loss_g_mean, label='Generator Loss')
     plt.plot(k_imgs, loss_d_mean, label='Discriminator Loss')
-    plt.xlabel('K Images')
+    plt.xlabel('Images Processed (x1000)')
     plt.ylabel('Loss')
     plt.legend()
-    plt.title('Loss vs K Images')
+    plt.title('Loss vs Images Processed (x1000)')
     plt.savefig('loss_vs_kimgs_gamma_4.png')
     plt.show()
 

@@ -1,1 +1,6 @@
 datasets
+training-runs
+*/*__pycache__
+__pycache__/
+torch_utils/ops/__pycache__/
+*.png

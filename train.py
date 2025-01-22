@@ -99,9 +99,10 @@ def launch_training(c, desc, outdir, dry_run):
 
 #----------------------------------------------------------------------------
 
-def init_dataset_kwargs(data):
+def init_dataset_kwargs(data, segmentations=False):
     try:
-        dataset_kwargs = dnnlib.EasyDict(class_name='training.dataset.ImageFolderDataset', path=data, use_labels=True, max_size=None, xflip=False)
+        dataset_class = 'training.dataset.ImageFolderDataset' if not segmentations else 'training.dataset.ImageSegmentationDataset'
+        dataset_kwargs = dnnlib.EasyDict(class_name=dataset_class, path=data, use_labels=True, max_size=None, xflip=False)
         dataset_obj = dnnlib.util.construct_class_by_name(**dataset_kwargs) # Subclass of training.dataset.Dataset.
         dataset_kwargs.resolution = dataset_obj.resolution # Be explicit about resolution.
         dataset_kwargs.use_labels = dataset_obj.has_labels # Be explicit about labels.
@@ -137,6 +138,7 @@ def parse_comma_separated_list(s):
 @click.option('--aug',          help='Augmentation mode',                                       type=click.Choice(['noaug', 'ada', 'fixed']), default='ada', show_default=True)
 @click.option('--resume',       help='Resume from given network pickle', metavar='[PATH|URL]',  type=str)
 @click.option('--freezed',      help='Freeze first layers of D', metavar='INT',                 type=click.IntRange(min=0), default=0, show_default=True)
+@click.option('--seg_mask',     help='Dataset contains segmentations masks', metavar='BOOL',    type=bool, default=False, show_default=True)
 
 # Misc hyperparameters.
 @click.option('--p',            help='Probability for --aug=fixed', metavar='FLOAT',            type=click.FloatRange(min=0, max=1), default=0.2, show_default=True)
@@ -195,7 +197,7 @@ def main(**kwargs):
     c.data_loader_kwargs = dnnlib.EasyDict(pin_memory=True, prefetch_factor=2)
 
     # Training set.
-    c.training_set_kwargs, dataset_name = init_dataset_kwargs(data=opts.data)
+    c.training_set_kwargs, dataset_name = init_dataset_kwargs(data=opts.data, segmentations=opts.seg_mask)
     if opts.cond and not c.training_set_kwargs.use_labels:
         raise click.ClickException('--cond=True requires labels specified in dataset.json')
     c.training_set_kwargs.use_labels = opts.cond
@@ -252,7 +254,7 @@ def main(**kwargs):
 
     # Augmentation.
     if opts.aug != 'noaug':
-        c.augment_kwargs = dnnlib.EasyDict(class_name='training.augment.AugmentPipe', xflip=1, rotate90=1, xint=1, scale=1, rotate=1, aniso=1, xfrac=1, brightness=1, contrast=1, lumaflip=1, hue=1, saturation=1)
+        c.augment_kwargs = dnnlib.EasyDict(class_name='training.augment.AugmentPipe', xflip=1, rotate90=0, xint=0, scale=1, rotate=0, aniso=0, xfrac=0, brightness=0, contrast=0, lumaflip=0, hue=0, saturation=0)
         if opts.aug == 'ada':
             c.ada_target = opts.target
         if opts.aug == 'fixed':
