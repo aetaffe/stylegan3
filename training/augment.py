@@ -361,13 +361,19 @@ class AugmentPipe(torch.nn.Module):
         # Execute if the transform is not identity.
         if C is not I_4:
             images = images.reshape([batch_size, num_channels, height * width])
-            if num_channels == 3:
+            if num_channels == 4: # assuming 4th channel is the segmentation mask
+                rgb_images = images[:, :3, :]
+                mask = images[:, 3, :]
+                rgb_images = C[:, :3, :3] @ rgb_images + C[:, :3, 3:]
+                # Combine mask and transformed images
+                images = torch.cat((rgb_images, mask[:, None, :]), axis=1)
+            elif num_channels == 3:
                 images = C[:, :3, :3] @ images + C[:, :3, 3:]
             elif num_channels == 1:
                 C = C[:, :3, :].mean(dim=1, keepdims=True)
                 images = images * C[:, :, :3].sum(dim=2, keepdims=True) + C[:, :, 3:]
             else:
-                raise ValueError('Image must be RGB (3 channels) or L (1 channel)')
+                raise ValueError('Image must be RGB + mask (4 channels) or RGB (3 channels) or L (1 channel)')
             images = images.reshape([batch_size, num_channels, height, width])
 
         # ----------------------
