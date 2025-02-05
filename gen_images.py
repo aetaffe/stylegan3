@@ -132,9 +132,20 @@ def generate_images(
             m = np.linalg.inv(m)
             G.synthesis.input.transform.copy_(torch.from_numpy(m))
 
+        # image shape 1 x 4 x 256 x 256
         img = G(z, label, truncation_psi=truncation_psi, noise_mode=noise_mode)
+        # image shape 1 x 256 x 256 x 4
         img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
-        PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'{outdir}/seed{seed:04d}.png')
+        rgb_img = img[0, :, :, :3]
+        mask = np.where(img[0, :, :, 3].cpu().numpy() > 50, 255, 0)
+        mask = mask[:,:, None]
+        mask = mask.repeat(3, 2)
+        rgb_img = rgb_img.cpu().numpy()
+        color_copy = np.zeros_like(rgb_img)
+        color_copy[:] = [255, 255, 0]
+        rgb_img = np.where(mask == 255, color_copy, rgb_img)
+        PIL.Image.fromarray(rgb_img, 'RGB').save(f'{outdir}/seed{seed:04d}.png')
+        PIL.Image.fromarray(mask.astype(np.uint8), 'RGB').save(f'{outdir}/seed{seed:04d}_mask.png')
 
 
 #----------------------------------------------------------------------------
