@@ -4,3 +4,4 @@ training-runs
 __pycache__/
 torch_utils/ops/__pycache__/
 *.png
+*.jsonl

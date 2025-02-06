@@ -749,9 +749,14 @@ class Discriminator(torch.nn.Module):
         super().__init__()
         self.c_dim = c_dim
         self.img_resolution = img_resolution
+        # log2(resolution) converts resolution to power of 2
+        # e.g. log2(1024) = 10, log2(512) = 9
         self.img_resolution_log2 = int(np.log2(img_resolution))
         self.img_channels = img_channels
         self.block_resolutions = [2 ** i for i in range(self.img_resolution_log2, 2, -1)]
+        # Channel base default = 32768 = 2^15
+        # Dividing channel base by resolution gives the number of channels for each resolution
+        # e.g. 32768 / 1024 = 2^15 / 2^10 = 2^5 = 32
         channels_dict = {res: min(channel_base // res, channel_max) for res in self.block_resolutions + [4]}
         fp16_resolution = max(2 ** (self.img_resolution_log2 + 1 - num_fp16_res), 8)
 

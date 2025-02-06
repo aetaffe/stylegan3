@@ -32,8 +32,8 @@ if __name__ == '__main__':
     plt.xlabel('Images Processed (x1000)')
     plt.ylabel('Loss')
     plt.legend()
-    plt.title('Loss vs Images Processed (x1000)')
-    plt.savefig('loss_vs_kimgs_gamma10.png')
+    plt.title('Loss vs K Images')
+    plt.savefig('loss_vs_kimgs-256x256-img-msk-gamma-4.5.png')
     plt.show()
 
 
