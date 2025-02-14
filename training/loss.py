@@ -77,7 +77,7 @@ class StyleGAN2Loss(Loss):
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
                 loss_Gmain_dec = torch.nn.functional.softplus(-gen_dec_logits).mean(dim=(2,3)) # mean(-log(sigmoid(gen_logits)))
                 loss_Gmain_enc = torch.nn.functional.softplus(-gen_logits) # -log(sigmoid(gen_logits))
-                training_stats.report('Loss/G/loss_D', loss_Gmain_enc + loss_Gmain_dec)
+                training_stats.report('Loss/G/loss', loss_Gmain_enc + loss_Gmain_dec)
                 loss_Gmain = loss_Gmain_dec + loss_Gmain_enc
             with torch.autograd.profiler.record_function('Gmain_backward'):
                 loss_Gmain.mean().mul(gain).backward()
@@ -128,7 +128,7 @@ class StyleGAN2Loss(Loss):
                 loss_Dreal = 0
                 if phase in ['Dmain', 'Dboth']:
                     loss_Dreal_enc = torch.nn.functional.softplus(-real_logits) # -log(sigmoid(real_logits))
-                    loss_Dreal_dec = torch.nn.functional.softplus(real_dec_logits).mean(dim=(2,3))
+                    loss_Dreal_dec = torch.nn.functional.softplus(-real_dec_logits).mean(dim=(2,3))
                     training_stats.report('Loss/D/loss', loss_Dgen + loss_Dreal_enc)
                     loss_Dreal = loss_Dreal_enc + loss_Dreal_dec
 

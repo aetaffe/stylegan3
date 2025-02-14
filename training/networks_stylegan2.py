@@ -1034,7 +1034,7 @@ class UnetDiscriminator(torch.nn.Module):
             cur_layer_idx += up_block.num_layers
             up_blocks.append(up_block)
         self.up_blocks = torch.nn.ModuleList(up_blocks)
-        self.dec_conv_out = torch.nn.Conv2d(64, 1, 1)
+        self.dec_conv_out = torch.nn.Conv2d(in_out_channels[-1][-1], 1, 1)
         self.b4 = DiscriminatorEpilogue(channels_dict[4], cmap_dim=cmap_dim, resolution=4, **epilogue_kwargs, **common_kwargs)
 
     def forward(self, img, c, update_emas=False, **block_kwargs):
