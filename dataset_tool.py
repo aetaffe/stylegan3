@@ -454,11 +454,15 @@ def convert_dataset(
         img.save(image_bits, format='png', compress_level=0, optimize=False)
         save_bytes(os.path.join(archive_root_dir, archive_fname), image_bits.getbuffer())
         labels.append([archive_fname, image['label']] if image['label'] is not None else None)
+        metadata = {
+            'labels': labels if all(x is not None for x in labels) else None
+        }
         save_bytes(os.path.join(archive_root_dir, mask_archive_fname), json.dumps(image['mask']))
 
     metadata = {
         'labels': labels if all(x is not None for x in labels) else None
     }
+    save_bytes(os.path.join(archive_root_dir, 'dataset.json'), json.dumps(metadata))
     close_dest()
 
 #----------------------------------------------------------------------------

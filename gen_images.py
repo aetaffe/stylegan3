@@ -17,7 +17,7 @@ import dnnlib
 import numpy as np
 import PIL.Image
 import torch
-
+from metrics import metric_main
 import legacy
 
 #----------------------------------------------------------------------------
@@ -52,6 +52,16 @@ def parse_vec2(s: Union[str, Tuple[float, float]]) -> Tuple[float, float]:
         return (float(parts[0]), float(parts[1]))
     raise ValueError(f'cannot parse 2-vector {s}')
 
+
+def get_training_set_kwargs(train_data_path: str) -> dict:
+    dataset_class = 'training.dataset.ImageSegmentationDataset'
+    dataset_kwargs = dnnlib.EasyDict(class_name=dataset_class, path=train_data_path, use_labels=False, max_size=None, xflip=False)
+    return dataset_kwargs
+
+def calculate_fid(generator, train_data_path, score_threshold):
+    training_set_kwargs = get_training_set_kwargs(train_data_path)
+    results_dict = metric_main.calc_metric(metric='fid50k_full_threshold', G=generator, dataset_kwargs=training_set_kwargs,
+                                           device=torch.device('cuda'), score_threshold=score_threshold)
 #----------------------------------------------------------------------------
 
 def make_transform(translate: Tuple[float,float], angle: float):
@@ -85,7 +95,7 @@ def generate_images(
     outdir: str,
     translate: Tuple[float,float],
     rotate: float,
-    class_idx: Optional[int]
+    class_idx: Optional[int],
 ):
     """Generate images using pretrained network pickle.
 
@@ -105,7 +115,10 @@ def generate_images(
     print('Loading networks from "%s"...' % network_pkl)
     device = torch.device('cuda')
     with dnnlib.util.open_url(network_pkl) as f:
-        G = legacy.load_network_pkl(f)['G_ema'].to(device) # type: ignore
+        models = legacy.load_network_pkl(f)
+        G = models['G_ema'].to(device=device)
+        D = models['D_ema'].to(device=device)
+        # G = legacy.load_network_pkl(f)['G_ema'].to(device) # type: ignore
 
     os.makedirs(outdir, exist_ok=True)
 
@@ -118,12 +131,14 @@ def generate_images(
     else:
         if class_idx is not None:
             print ('warn: --class=lbl ignored when running on an unconditional network')
-
+    total_imgs = 0
+    skipped_imgs = 0
     # Generate images.
     for seed_idx, seed in enumerate(seeds):
+        total_imgs += 1
         print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
-        z = torch.from_numpy(np.random.RandomState(seed).randn(1, G.z_dim)).to(device)
-
+        # z = torch.from_numpy(np.random.RandomState(seed).randn(1, G.z_dim)).to(device)
+        z = torch.randn([1, G.z_dim]).to(device)
         # Construct an inverse rotation/translation matrix and pass to the generator.  The
         # generator expects this matrix as an inverse to avoid potentially failing numerical
         # operations in the network.
@@ -133,19 +148,29 @@ def generate_images(
             G.synthesis.input.transform.copy_(torch.from_numpy(m))
 
         # image shape 1 x 4 x 256 x 256
+
         img = G(z, label, truncation_psi=truncation_psi, noise_mode=noise_mode)
-        # image shape 1 x 256 x 256 x 4
-        img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
-        rgb_img = img[0, :, :, :3]
-        mask = np.where(img[0, :, :, 3].cpu().numpy() > 50, 255, 0)
-        mask = mask[:,:, None]
-        mask = mask.repeat(3, 2)
-        rgb_img = rgb_img.cpu().numpy()
-        color_copy = np.zeros_like(rgb_img)
-        color_copy[:] = [255, 255, 0]
-        rgb_img = np.where(mask == 255, color_copy, rgb_img)
-        PIL.Image.fromarray(rgb_img, 'RGB').save(f'{outdir}/seed{seed:04d}.png')
-        PIL.Image.fromarray(mask.astype(np.uint8), 'RGB').save(f'{outdir}/seed{seed:04d}_mask.png')
+        score = torch.sigmoid(D(img=img, c=None)).cpu().numpy()[0][0] * 1000
+        print(f'seed: {seed}, score: {score}')
+
+        if score >= 30:
+            # image shape 1 x 256 x 256 x 4
+            img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
+            rgb_img = img[0, :, :, :3]
+            mask = np.where(img[0, :, :, 3].cpu().numpy() > 50, 255, 0)
+            mask = mask[:,:, None]
+            mask = mask.repeat(3, 2)
+            rgb_img = rgb_img.cpu().numpy()
+            color_copy = np.zeros_like(rgb_img)
+            color_copy[:] = [255, 255, 0]
+            rgb_img = np.where(mask == 255, color_copy, rgb_img)
+            PIL.Image.fromarray(rgb_img, 'RGB').save(f'{outdir}/seed{seed:04d}_{round(score)}.png')
+            # PIL.Image.fromarray(mask.astype(np.uint8), 'RGB').save(f'{outdir}/seed{seed:04d}_mask.png')
+        else:
+            print('skipping seed', seed)
+            skipped_imgs += 1
+
+    print(f'total images: {total_imgs}, skipped images: {skipped_imgs}, kept images: {total_imgs - skipped_imgs}, percent kept: {100*(1 - skipped_imgs/total_imgs):.2f}%')
 
 
 #----------------------------------------------------------------------------

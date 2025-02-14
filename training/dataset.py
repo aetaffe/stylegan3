@@ -16,6 +16,7 @@ import json
 import torch
 import dnnlib
 import supervision as sv
+import copy
 
 try:
     import pyspng
@@ -270,7 +271,7 @@ class ImageSegmentationDataset(ImageFolderDataset):
         mask = np.zeros((height, width))
         for shape in polygons:
             if shape['label'] == 'AimingBeam':
-                points = shape['points']
+                points = np.int32(shape['points'])
                 instr_mask = sv.polygon_to_mask(np.array(points), (width, height))
                 instr_mask = np.where(instr_mask == 1, 255, 0)
                 mask += instr_mask

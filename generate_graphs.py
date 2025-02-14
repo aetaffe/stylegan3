@@ -16,7 +16,7 @@ def get_stats_dict(stats_path):
 
 
 if __name__ == '__main__':
-    stats_path = '/media/alex/1TBSSD/research_gans/HPC/00023-stylegan2-FLIm-Images-no-phantom-512x512-gpus1-batch32-gamma10/stats.jsonl'
+    stats_path = '/media/alex/1TBSSD/research_gans/HPC/00028-stylegan2-FLIm-Images-no-phantom-512x512-gpus1-batch16-gamma14/stats_1.jsonl'
     stats = get_stats_dict(stats_path)
     loss_g_mean = []
     loss_d_mean = []
@@ -33,7 +33,7 @@ if __name__ == '__main__':
     plt.ylabel('Loss')
     plt.legend()
     plt.title('Loss vs K Images')
-    plt.savefig('loss_vs_kimgs-256x256-img-msk-gamma-4.5.png')
+    plt.savefig('loss_vs_kimgs-512x512-img-msk-gamma-12.png')
     plt.show()
 
 

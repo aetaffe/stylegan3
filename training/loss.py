@@ -57,8 +57,8 @@ class StyleGAN2Loss(Loss):
                 img = upfirdn2d.filter2d(img, f / f.sum())
         if self.augment_pipe is not None:
             img = self.augment_pipe(img)
-        logits = self.D(img, c, update_emas=update_emas)
-        return logits
+        logits, dec_logits = self.D(img, c, update_emas=update_emas)
+        return logits, dec_logits
 
     def accumulate_gradients(self, phase, real_img, real_c, gen_z, gen_c, gain, cur_nimg):
         assert phase in ['Gmain', 'Greg', 'Gboth', 'Dmain', 'Dreg', 'Dboth']
@@ -72,11 +72,13 @@ class StyleGAN2Loss(Loss):
         if phase in ['Gmain', 'Gboth']:
             with torch.autograd.profiler.record_function('Gmain_forward'):
                 gen_img, _gen_ws = self.run_G(gen_z, gen_c)
-                gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma)
+                gen_logits, gen_dec_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma)
                 training_stats.report('Loss/scores/fake', gen_logits)
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
-                loss_Gmain = torch.nn.functional.softplus(-gen_logits) # -log(sigmoid(gen_logits))
-                training_stats.report('Loss/G/loss', loss_Gmain)
+                loss_Gmain_dec = torch.nn.functional.softplus(-gen_dec_logits).mean(dim=(2,3)) # mean(-log(sigmoid(gen_logits)))
+                loss_Gmain_enc = torch.nn.functional.softplus(-gen_logits) # -log(sigmoid(gen_logits))
+                training_stats.report('Loss/G/loss_D', loss_Gmain_enc + loss_Gmain_dec)
+                loss_Gmain = loss_Gmain_dec + loss_Gmain_enc
             with torch.autograd.profiler.record_function('Gmain_backward'):
                 loss_Gmain.mean().mul(gain).backward()
 
@@ -103,10 +105,13 @@ class StyleGAN2Loss(Loss):
         if phase in ['Dmain', 'Dboth']:
             with torch.autograd.profiler.record_function('Dgen_forward'):
                 gen_img, _gen_ws = self.run_G(gen_z, gen_c, update_emas=True)
-                gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma, update_emas=True)
-                training_stats.report('Loss/scores/fake', gen_logits)
+                gen_logits, gen_dec_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma, update_emas=True)
+                training_stats.report('Loss/scores/fake_enc', gen_logits)
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
-                loss_Dgen = torch.nn.functional.softplus(gen_logits) # -log(1 - sigmoid(gen_logits))
+                loss_Dgen_dec = torch.nn.functional.softplus(gen_dec_logits).mean(dim=(2,3))
+                training_stats.report('Loss/scores/fake_dec', loss_Dgen_dec)
+                loss_Dgen_enc = torch.nn.functional.softplus(gen_logits) # -log(1 - sigmoid(gen_logits))
+                loss_Dgen = loss_Dgen_enc + loss_Dgen_enc
             with torch.autograd.profiler.record_function('Dgen_backward'):
                 loss_Dgen.mean().mul(gain).backward()
 
@@ -116,14 +121,16 @@ class StyleGAN2Loss(Loss):
             name = 'Dreal' if phase == 'Dmain' else 'Dr1' if phase == 'Dreg' else 'Dreal_Dr1'
             with torch.autograd.profiler.record_function(name + '_forward'):
                 real_img_tmp = real_img.detach().requires_grad_(phase in ['Dreg', 'Dboth'])
-                real_logits = self.run_D(real_img_tmp, real_c, blur_sigma=blur_sigma)
+                real_logits, real_dec_logits = self.run_D(real_img_tmp, real_c, blur_sigma=blur_sigma)
                 training_stats.report('Loss/scores/real', real_logits)
                 training_stats.report('Loss/signs/real', real_logits.sign())
 
                 loss_Dreal = 0
                 if phase in ['Dmain', 'Dboth']:
-                    loss_Dreal = torch.nn.functional.softplus(-real_logits) # -log(sigmoid(real_logits))
-                    training_stats.report('Loss/D/loss', loss_Dgen + loss_Dreal)
+                    loss_Dreal_enc = torch.nn.functional.softplus(-real_logits) # -log(sigmoid(real_logits))
+                    loss_Dreal_dec = torch.nn.functional.softplus(real_dec_logits).mean(dim=(2,3))
+                    training_stats.report('Loss/D/loss', loss_Dgen + loss_Dreal_enc)
+                    loss_Dreal = loss_Dreal_enc + loss_Dreal_dec
 
                 loss_Dr1 = 0
                 if phase in ['Dreg', 'Dboth']:

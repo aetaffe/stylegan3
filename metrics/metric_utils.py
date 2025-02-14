@@ -17,13 +17,14 @@ import uuid
 import numpy as np
 import torch
 import dnnlib
-
+from tqdm import tqdm
 #----------------------------------------------------------------------------
 
 class MetricOptions:
-    def __init__(self, G=None, G_kwargs={}, dataset_kwargs={}, num_gpus=1, rank=0, device=None, progress=None, cache=True):
+    def __init__(self, G=None, D=None, G_kwargs={}, dataset_kwargs={}, num_gpus=1, rank=0, device=None, progress=None, cache=True, score_threshold=None):
         assert 0 <= rank < num_gpus
         self.G              = G
+        self.D              = D
         self.G_kwargs       = dnnlib.EasyDict(G_kwargs)
         self.dataset_kwargs = dnnlib.EasyDict(dataset_kwargs)
         self.num_gpus       = num_gpus
@@ -31,6 +32,7 @@ class MetricOptions:
         self.device         = device if device is not None else torch.device('cuda', rank)
         self.progress       = progress.sub() if progress is not None and rank == 0 else ProgressMonitor()
         self.cache          = cache
+        self.score_threshold = score_threshold
 
 #----------------------------------------------------------------------------
 
@@ -280,3 +282,69 @@ def compute_feature_stats_for_generator(opts, detector_url, detector_kwargs, rel
     return stats
 
 #----------------------------------------------------------------------------
+# New
+#----------------------------------------------------------------------------
+def compute_feature_stats_for_generator_with_threshold(opts, detector_url, detector_kwargs, rel_lo=0, rel_hi=1, batch_size=64, batch_gen=None, **stats_kwargs):
+    if batch_gen is None:
+        batch_gen = min(batch_size, 16)
+    assert batch_size % batch_gen == 0
+
+    # Setup generator and labels.
+    G = copy.deepcopy(opts.G).eval().requires_grad_(False).to(opts.device)
+    D = copy.deepcopy(opts.D).eval().requires_grad_(False).to(opts.device)
+    c_iter = iterate_random_labels(opts=opts, batch_size=batch_gen)
+    score_threshold = opts.score_threshold
+    print(f'Calculating FID for threshold {score_threshold}...')
+    # Initialize.
+    stats = FeatureStats(**stats_kwargs)
+    assert stats.max_items is not None
+    progress = opts.progress.sub(tag='generator features', num_items=stats.max_items, rel_lo=rel_lo, rel_hi=rel_hi)
+    detector = get_feature_detector(url=detector_url, device=opts.device, num_gpus=opts.num_gpus, rank=opts.rank, verbose=progress.verbose)
+
+    # Main loop.
+    with tqdm(total=stats.max_items) as pbar:
+        while not stats.is_full():
+            images = []
+            for _i in range(batch_size // batch_gen):
+                img = get_imgs_above_threshold(G,D, c_iter, batch_gen, score_threshold, opts.device)
+                img = img[:, :3, :, :] # Ignore mask
+                img = (img * 127.5 + 128).clamp(0, 255).to(torch.uint8)
+                images.append(img)
+            images = torch.cat(images)
+            if images.shape[1] == 1:
+                images = images.repeat([1, 3, 1, 1])
+            features = detector(images, **detector_kwargs)
+            stats.append_torch(features, num_gpus=opts.num_gpus, rank=opts.rank)
+            progress.update(stats.num_items)
+            pbar.update(features.shape[0])
+    return stats
+
+def get_imgs_above_threshold(G, D, c_iter, batch_gen, threshold, device):
+    z = torch.randn([batch_gen, G.z_dim], device=device)
+    c_batch = next(c_iter)
+    imgs = G(z=z, c=c_batch, truncation_psi=1, noise_mode='const')
+    scores = torch.sigmoid(D(imgs, None)) * 100
+    # Get scores below theshold
+    scores_below = scores < threshold
+    num_above_threshold = batch_gen - torch.sum(scores_below).cpu().numpy()
+    # Get indices of scores below threshold
+    below_indices = torch.transpose(torch.argwhere(torch.squeeze(scores_below)),1, 0).cpu().numpy()
+    below_itr = iter(below_indices[0].tolist() if len(below_indices) > 0 else [])
+    start = time.time()
+    while num_above_threshold < batch_gen:
+        z = torch.randn([batch_gen, G.z_dim], device=device)
+        new_imgs = G(z=z, c=c_batch, truncation_psi=1, noise_mode='const')
+        scores = torch.sigmoid(D(imgs, None)) * 100
+        new_scores_above = scores > threshold
+        num_above_threshold = num_above_threshold + torch.sum(new_scores_above).cpu().numpy()
+        new_above_indices = torch.transpose(torch.argwhere(torch.squeeze(new_scores_above)),1, 0).cpu().numpy()
+        new_above_indices_list = new_above_indices[0].tolist() if len(new_above_indices) > 0 else []
+        for next_new_above_idx in new_above_indices_list:
+            next_below_idx = next(below_itr, None)
+            if next_below_idx is None:
+                break
+            imgs[next_below_idx, :, :, :] = new_imgs[next_new_above_idx, :, :, :]
+
+        if time.time() - start > 3600:
+            raise RuntimeError('Timeout exceeded for generating images above threshold.')
+    return imgs
