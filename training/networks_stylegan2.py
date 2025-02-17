@@ -844,12 +844,7 @@ class UnetDiscriminatorUpBlock(torch.nn.Module):
             self.skip = Conv2dLayer(in_channels // 2, out_channels, kernel_size=1, bias=False, up=2,
                                     trainable=next(trainable_iter), resample_filter=resample_filter,
                                     channels_last=self.channels_last)
-            # if not is_last_layer:
-            #     self.skip = Conv2dLayer(in_channels // 2, out_channels, kernel_size=1, bias=False, up=2,
-            #         trainable=next(trainable_iter), resample_filter=resample_filter, channels_last=self.channels_last)
-            # else:
-            #     self.skip = Conv2dLayer(in_channels, out_channels, kernel_size=1, bias=False, up=2,
-            #         trainable=next(trainable_iter), resample_filter=resample_filter, channels_last=self.channels_last)
+
 
     def forward(self, x, res):
         if (x if x is not None else img).device.type != 'cuda':
@@ -923,9 +918,9 @@ class UnetDiscriminatorDownBlock(torch.nn.Module):
         self.conv0 = Conv2dLayer(tmp_channels, tmp_channels, kernel_size=3, activation=activation,
             trainable=next(trainable_iter), conv_clamp=conv_clamp, channels_last=self.channels_last)
 
-        # Residual layer
-        self.conv_res = Conv2dLayer(tmp_channels, tmp_channels, kernel_size=3, activation=activation,
-            trainable=next(trainable_iter), resample_filter=resample_filter, conv_clamp=conv_clamp, channels_last=self.channels_last)
+        # # Residual layer
+        # self.conv_res = Conv2dLayer(tmp_channels, tmp_channels, kernel_size=3, activation=activation,
+        #     trainable=next(trainable_iter), resample_filter=resample_filter, conv_clamp=conv_clamp, channels_last=self.channels_last)
 
         self.conv1 = Conv2dLayer(tmp_channels, out_channels, kernel_size=3, activation=activation, down=2,
             trainable=next(trainable_iter), resample_filter=resample_filter, conv_clamp=conv_clamp, channels_last=self.channels_last)
@@ -957,7 +952,8 @@ class UnetDiscriminatorDownBlock(torch.nn.Module):
         if self.architecture == 'resnet':
             y = self.skip(x, gain=np.sqrt(0.5))
             x = self.conv0(x)
-            res = self.conv_res(x, gain=np.sqrt(0.5))
+            # res = self.conv_res(x, gain=np.sqrt(0.5))
+            res = x.clone()
             x = self.conv1(x, gain=np.sqrt(0.5))
             x = y.add_(x)
         else:
