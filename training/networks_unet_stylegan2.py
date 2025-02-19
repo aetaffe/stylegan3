@@ -4,7 +4,7 @@ import torch
 from torch_utils import misc
 from torch_utils import persistence
 from torch_utils.ops import upfirdn2d
-from linear_attention_transformer import ImageLinearAttention
+# from linear_attention_transformer import ImageLinearAttention
 
 def leaky_relu(p=0.2):
     return torch.nn.LeakyReLU(p)
@@ -29,12 +29,12 @@ def convert_bias_to_float16(model):
         if hasattr(module, 'bias') and module.bias is not None:
             module.bias.data = module.bias.data.to(torch.float16)
 
-def attn_and_ff(chan):
-    return torch.nn.Sequential(
-            Residual(Rezero(ImageLinearAttention(chan, norm_queries=True)),),
-            Residual(Rezero(torch.nn.Sequential(torch.nn.Conv2d(chan, chan * 2, 1), leaky_relu(),
-                                                torch.nn.Conv2d(chan * 2, chan, 1))))
-    )
+# def attn_and_ff(chan):
+#     return torch.nn.Sequential(
+#             Residual(Rezero(ImageLinearAttention(chan, norm_queries=True)),),
+#             Residual(Rezero(torch.nn.Sequential(torch.nn.Conv2d(chan, chan * 2, 1), leaky_relu(),
+#                                                 torch.nn.Conv2d(chan * 2, chan, 1))))
+#     )
 
 # attn_and_ff = lambda chan: torch.nn.Sequential(*[
 #     Residual(Rezero(ImageLinearAttention(chan, norm_queries = True))),
