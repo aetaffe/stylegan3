@@ -1018,7 +1018,7 @@ class UnetDiscriminator(torch.nn.Module):
             self.mapping = MappingNetwork(z_dim=0, c_dim=c_dim, w_dim=cmap_dim, num_ws=None, w_avg_beta=None, **mapping_kwargs)
 
         in_out_channels = []
-        for res in self.block_resolutions[:-1][::-1]:
+        for res in self.block_resolutions[:-2][::-1]:
             chan = channels_dict[res]
             next_chan = chan if res == self.block_resolutions[0] else channels_dict[res * 2]
             in_out_channels.append((chan * 2, next_chan))
@@ -1042,11 +1042,11 @@ class UnetDiscriminator(torch.nn.Module):
             block = getattr(self, f'b-down{res}')
             enc_x, img, unet_res = block(enc_x, img, **block_kwargs)
             residuals.append(unet_res)
-            if res == self.block_resolutions[-2]:
+            if res == self.block_resolutions[-3]:
                 dec_x = torch.empty_like(enc_x)
                 dec_x.copy_(enc_x)
 
-        for (up_block, residual) in zip(self.up_blocks, residuals[:-1][::-1]):
+        for (up_block, residual) in zip(self.up_blocks, residuals[:-2][::-1]):
             dec_x = up_block(dec_x, residual)
 
         cmap = None
