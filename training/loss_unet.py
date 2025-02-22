@@ -212,7 +212,7 @@ class StyleGAN2Loss(Loss):
                         # mix(D_dec(x), D_dec(G(x)), Mask)
                         cr_cutmix_dec = self._mask_src_tgt(real_dec_logits, gen_dec_logits_copy, mask)
                         # cr_loss = torch.nn.functional.mse_loss(cutmix_dec_logits, cr_cutmix_dec) * 0.2
-                        cr_loss = torch.nn.functional.HuberLoss(cutmix_dec_logits, cr_cutmix_dec)
+                        cr_loss = torch.nn.HuberLoss(cutmix_dec_logits, cr_cutmix_dec)
                         training_stats.report('Loss/consistency_reg/loss', cr_loss)
                         training_stats.report('Loss/decoder_coefficient', dec_loss_coef)
                         loss_Dreal = loss_Dreal + (loss_cutmix * dec_loss_coef) + cr_loss * dec_loss_coef
