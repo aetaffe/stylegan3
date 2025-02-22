@@ -6,3 +6,5 @@ torch_utils/ops/__pycache__/
 *.png
 *.jsonl
 password.py
+jobs
+snapshots

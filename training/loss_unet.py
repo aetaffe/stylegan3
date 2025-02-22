@@ -187,8 +187,8 @@ class StyleGAN2Loss(Loss):
                     training_stats.report('Loss/D/loss', loss_Dgen + loss_Dreal_enc)
                     loss_Dreal = loss_Dreal_enc + loss_Dreal_dec
 
-                    dec_loss_coef = warmup(0, 1, 1000000, self.steps)
-                    cutmix_prob = warmup(0, 0.25, 1000000, self.steps)
+                    dec_loss_coef = warmup(0, 1, 500000, self.steps)
+                    cutmix_prob = warmup(0, 0.25, 500000, self.steps)
                     if self.cutmix and torch.rand(1).item() < cutmix_prob * self.augment_pipe.p:
                         image_size = real_img.shape[2]
                         mask = self._cutmix(
@@ -211,9 +211,11 @@ class StyleGAN2Loss(Loss):
                         # Consistency regularization
                         # mix(D_dec(x), D_dec(G(x)), Mask)
                         cr_cutmix_dec = self._mask_src_tgt(real_dec_logits, gen_dec_logits_copy, mask)
-                        cr_loss = torch.nn.functional.mse_loss(cutmix_dec_logits, cr_cutmix_dec) * 0.2
+                        # cr_loss = torch.nn.functional.mse_loss(cutmix_dec_logits, cr_cutmix_dec) * 0.2
+                        cr_loss = torch.nn.functional.HuberLoss(cutmix_dec_logits, cr_cutmix_dec)
                         training_stats.report('Loss/consistency_reg/loss', cr_loss)
-                        loss_Dreal = loss_Dreal + loss_cutmix + cr_loss * dec_loss_coef
+                        training_stats.report('Loss/decoder_coefficient', dec_loss_coef)
+                        loss_Dreal = loss_Dreal + (loss_cutmix * dec_loss_coef) + cr_loss * dec_loss_coef
 
 
                 loss_Dr1 = 0
