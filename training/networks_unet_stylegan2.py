@@ -4,7 +4,6 @@ import torch
 from torch_utils import misc
 from torch_utils import persistence
 from torch_utils.ops import upfirdn2d
-# from linear_attention_transformer import ImageLinearAttention
 
 def leaky_relu(p=0.2):
     return torch.nn.LeakyReLU(p)
@@ -28,18 +27,6 @@ def convert_bias_to_float16(model):
     for module in model.modules():
         if hasattr(module, 'bias') and module.bias is not None:
             module.bias.data = module.bias.data.to(torch.float16)
-
-# def attn_and_ff(chan):
-#     return torch.nn.Sequential(
-#             Residual(Rezero(ImageLinearAttention(chan, norm_queries=True)),),
-#             Residual(Rezero(torch.nn.Sequential(torch.nn.Conv2d(chan, chan * 2, 1), leaky_relu(),
-#                                                 torch.nn.Conv2d(chan * 2, chan, 1))))
-#     )
-
-# attn_and_ff = lambda chan: torch.nn.Sequential(*[
-#     Residual(Rezero(ImageLinearAttention(chan, norm_queries = True))),
-#     Residual(Rezero(torch.nn.Sequential(torch.nn.Conv2d(chan, chan * 2, 1), leaky_relu(), torch.nn.Conv2d(chan * 2, chan, 1))))
-# ])
 
 @persistence.persistent_class
 class UnetDiscriminatorUpBlock(torch.nn.Module):
@@ -158,10 +145,6 @@ class UnetDiscriminatorDownBlock(torch.nn.Module):
         self.conv0 = Conv2dLayer(tmp_channels, tmp_channels, kernel_size=3, activation=activation,
             trainable=next(trainable_iter), conv_clamp=conv_clamp, channels_last=self.channels_last)
 
-        # # Residual layer
-        # self.conv_res = Conv2dLayer(tmp_channels, tmp_channels, kernel_size=3, activation=activation,
-        #     trainable=next(trainable_iter), resample_filter=resample_filter, conv_clamp=conv_clamp, channels_last=self.channels_last)
-
         self.conv1 = Conv2dLayer(tmp_channels, out_channels, kernel_size=3, activation=activation, down=2,
             trainable=next(trainable_iter), resample_filter=resample_filter, conv_clamp=conv_clamp, channels_last=self.channels_last)
 
@@ -253,8 +236,6 @@ class UnetDiscriminator(torch.nn.Module):
                                                first_layer_idx=cur_layer_idx, use_fp16=use_fp16, **block_kwargs, **common_kwargs)
             setattr(self, f'down_block{res}', block)
             cur_layer_idx += block.num_layers
-            # attn_fn = attn_and_ff(out_channels)
-            # setattr(self, f'attn_block{res}', attn_fn)
 
         if c_dim > 0:
             self.mapping = MappingNetwork(z_dim=0, c_dim=c_dim, w_dim=cmap_dim, num_ws=None, w_avg_beta=None, **mapping_kwargs)
@@ -264,11 +245,10 @@ class UnetDiscriminator(torch.nn.Module):
             chan = channels_dict[res]
             next_chan = chan if res == self.block_resolutions[0] else channels_dict[res * 2]
             in_out_channels.append((chan * 2, next_chan, res))
-        # in_out_channels.append((channels_dict[self.block_resolutions[0]] * 2, 3))
 
         up_blocks = []
         for in_channels, out_channels, res in in_out_channels:
-            use_fp16 = (res >= 64)
+            use_fp16 = res >= 64
             up_block = UnetDiscriminatorUpBlock(in_channels, out_channels, first_layer_idx=cur_layer_idx, use_fp16=use_fp16, is_last_layer=out_channels == 3)
             cur_layer_idx += up_block.num_layers
             up_blocks.append(up_block)
@@ -283,11 +263,8 @@ class UnetDiscriminator(torch.nn.Module):
         residuals = []
         for res in self.block_resolutions:
             block = getattr(self, f'down_block{res}')
-            # attn_block = getattr(self, f'attn_block{res}')
             enc_x, img, unet_res = block(enc_x, img, **block_kwargs)
             residuals.append(unet_res)
-            # if attn_block is not None:
-            #     enc_x = attn_block(enc_x)
             if res == self.block_resolutions[-3]:
                 dec_x = torch.empty_like(enc_x)
                 dec_x.copy_(enc_x)
@@ -299,7 +276,7 @@ class UnetDiscriminator(torch.nn.Module):
         if self.c_dim > 0:
             cmap = self.mapping(None, c)
         enc_x = self.b4(enc_x, img, cmap)
-        dec_x = self.dec_conv_out(dec_x.to(dtype=torch.float32))
+        dec_x = self.dec_conv_out(dec_x.to(torch.float32))
         return enc_x, dec_x
 
     def extra_repr(self):

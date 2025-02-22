@@ -1,0 +1,2 @@
+python train.py '--outdir=training-runs' '--cfg=stylegan3-t' '--data=/home/ataffe/SyntheticData/stylegan3/datasets/FLIm-Images-256x256-no-phantom.zip' '--gpus=1' '--batch=32' '--gamma=4' '--mirror=1' '--snap=10' \
+'--resume=/home/ataffe/SyntheticData/stylegan3/training-runs/00005-stylegan3-t-FLIm-Images-256x256-no-phantom-gpus1-batch32-gamma3/network-snapshot-000160.pkl'

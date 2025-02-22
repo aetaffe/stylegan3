@@ -21,7 +21,9 @@ from training import training_loop
 from metrics import metric_main
 from torch_utils import training_stats
 from torch_utils import custom_ops
-
+from email.message import EmailMessage
+from password import email_password
+import ssl, smtplib
 #----------------------------------------------------------------------------
 
 def subprocess_fn(rank, c, temp_dir):
@@ -294,9 +296,25 @@ def main(**kwargs):
     # Launch.
     launch_training(c=c, desc=desc, outdir=opts.outdir, dry_run=opts.dry_run)
 
+def notify_by_email(msg):
+    port = 465  # For SSL
+    message = EmailMessage()
+    message.set_content(msg)
+    message["Subject"] = "GAN Training"
+    message["From"] = "taffe.dev@gmail.com"
+    message["To"] = "taffe.dev@gmail.com"
+
+    # Create a secure SSL context
+    context = ssl.create_default_context()
+    with smtplib.SMTP_SSL("smtp.gmail.com", port, context=context) as server:
+        server.login("taffealexander@gmail.com", email_password)
+        # server.sendmail("taffe.dev@gmail.com", "taffealexander@gmail.com", message)
+        server.send_message(message)
+
 #----------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    notify_by_email('Training is starting on the HPC')
     main() # pylint: disable=no-value-for-parameter
 
 #----------------------------------------------------------------------------
