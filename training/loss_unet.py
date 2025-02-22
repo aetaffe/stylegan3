@@ -188,8 +188,8 @@ class StyleGAN2Loss(Loss):
                     training_stats.report('Loss/D/loss', loss_Dgen + loss_Dreal_enc)
                     loss_Dreal = loss_Dreal_enc + loss_Dreal_dec
 
-                    dec_loss_coef = warmup(0, 1, 500000, self.steps)
-                    cutmix_prob = warmup(0, 0.25, 500000, self.steps)
+                    dec_loss_coef = warmup(0, 1, 10000000, self.steps)
+                    cutmix_prob = warmup(0, 0.25, 10000000, self.steps)
                     if self.cutmix and torch.rand(1).item() < cutmix_prob * self.augment_pipe.p:
                         image_size = real_img.shape[2]
                         mask = self._cutmix(
