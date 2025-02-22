@@ -124,6 +124,7 @@ def training_loop(
     abort_fn                = None,     # Callback function for determining whether to abort training. Must return consistent results across ranks.
     progress_fn             = None,     # Callback function for updating training progress. Called for all ranks.
 ):
+
     # Initialize.
     start_time = time.time()
     device = torch.device('cuda', rank)
@@ -195,6 +196,7 @@ def training_loop(
     if rank == 0:
         print('Setting up training phases...')
     loss = dnnlib.util.construct_class_by_name(device=device, G=G, D=D, augment_pipe=augment_pipe, **loss_kwargs) # subclass of training.loss.Loss
+    # loss.cutmix = False
     phases = []
     for name, module, opt_kwargs, reg_interval in [('G', G, G_opt_kwargs, G_reg_interval), ('D', D, D_opt_kwargs, D_reg_interval)]:
         if reg_interval is None:
@@ -255,6 +257,7 @@ def training_loop(
     batch_idx = 0
     if progress_fn is not None:
         progress_fn(0, total_kimg)
+
     while True:
 
         # Fetch training data.
@@ -370,7 +373,7 @@ def training_loop(
         # Save network snapshot.
         snapshot_pkl = None
         snapshot_data = None
-        if (network_snapshot_ticks is not None) and (done or cur_tick % network_snapshot_ticks == 0):
+        if (network_snapshot_ticks is not None) and (done or cur_tick % network_snapshot_ticks == 0) and cur_tick > 0:
             snapshot_data = dict(G=G, D=D, G_ema=G_ema,D_ema=D_ema, augment_pipe=augment_pipe, training_set_kwargs=dict(training_set_kwargs))
             for key, value in snapshot_data.items():
                 if isinstance(value, torch.nn.Module):
@@ -428,10 +431,13 @@ def training_loop(
         # Update state.
         cur_tick += 1
         tick_start_nimg = cur_nimg
+        loss.steps = cur_nimg
         tick_start_time = time.time()
         maintenance_time = tick_start_time - tick_end_time
         if done:
             break
+        # if cur_tick >= 100:
+        #     loss.cutmix = True
 
     # Done.
     if rank == 0:

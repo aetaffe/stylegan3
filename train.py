@@ -126,7 +126,7 @@ def parse_comma_separated_list(s):
 
 # Required.
 @click.option('--outdir',       help='Where to save the results', metavar='DIR',                required=True)
-@click.option('--cfg',          help='Base configuration',                                      type=click.Choice(['stylegan3-t', 'stylegan3-r', 'stylegan2']), required=True)
+@click.option('--cfg',          help='Base configuration',                                      type=click.Choice(['stylegan3-t', 'stylegan3-r', 'stylegan2', 'stylegan2-unet']), required=True)
 @click.option('--data',         help='Training data', metavar='[ZIP|DIR]',                      type=str, required=True)
 @click.option('--gpus',         help='Number of GPUs to use', metavar='INT',                    type=click.IntRange(min=1), required=True)
 @click.option('--batch',        help='Total batch size', metavar='INT',                         type=click.IntRange(min=1), required=True)
@@ -139,6 +139,7 @@ def parse_comma_separated_list(s):
 @click.option('--resume',       help='Resume from given network pickle', metavar='[PATH|URL]',  type=str)
 @click.option('--freezed',      help='Freeze first layers of D', metavar='INT',                 type=click.IntRange(min=0), default=0, show_default=True)
 @click.option('--seg_mask',     help='Dataset contains segmentations masks', metavar='BOOL',    type=bool, default=False, show_default=True)
+@click.option('--cutmix',       help='Cutmix augmentation', metavar='BOOL',                     type=bool, default=False, show_default=True)
 
 # Misc hyperparameters.
 @click.option('--p',            help='Probability for --aug=fixed', metavar='FLOAT',            type=click.FloatRange(min=0, max=1), default=0.2, show_default=True)
@@ -190,12 +191,20 @@ def main(**kwargs):
     opts = dnnlib.EasyDict(kwargs) # Command line arguments.
     c = dnnlib.EasyDict() # Main config dict.
     c.G_kwargs = dnnlib.EasyDict(class_name=None, z_dim=512, w_dim=512, mapping_kwargs=dnnlib.EasyDict())
-    # c.D_kwargs = dnnlib.EasyDict(class_name='training.networks_stylegan2.Discriminator', block_kwargs=dnnlib.EasyDict(), mapping_kwargs=dnnlib.EasyDict(), epilogue_kwargs=dnnlib.EasyDict())
-    c.D_kwargs = dnnlib.EasyDict(class_name='training.networks_unet_stylegan2.UnetDiscriminator', block_kwargs=dnnlib.EasyDict(),
-                                 mapping_kwargs=dnnlib.EasyDict(), epilogue_kwargs=dnnlib.EasyDict())
+    if opts.cfg == 'stylegan2-unet':
+        c.D_kwargs = dnnlib.EasyDict(class_name='training.networks_unet_stylegan2.UnetDiscriminator',
+                                     block_kwargs=dnnlib.EasyDict(), mapping_kwargs=dnnlib.EasyDict(),
+                                     epilogue_kwargs=dnnlib.EasyDict())
+    else:
+        c.D_kwargs = dnnlib.EasyDict(class_name='training.networks_stylegan2.Discriminator',
+                                     block_kwargs=dnnlib.EasyDict(), mapping_kwargs=dnnlib.EasyDict(),
+                                     epilogue_kwargs=dnnlib.EasyDict())
     c.G_opt_kwargs = dnnlib.EasyDict(class_name='torch.optim.Adam', betas=[0,0.99], eps=1e-8)
     c.D_opt_kwargs = dnnlib.EasyDict(class_name='torch.optim.Adam', betas=[0,0.99], eps=1e-8)
-    c.loss_kwargs = dnnlib.EasyDict(class_name='training.loss.StyleGAN2Loss')
+    if opts.cfg == 'stylegan2-unet':
+        c.loss_kwargs = dnnlib.EasyDict(class_name='training.loss_unet.StyleGAN2Loss',)
+    else:
+        c.loss_kwargs = dnnlib.EasyDict(class_name='training.loss.StyleGAN2Loss')
     c.data_loader_kwargs = dnnlib.EasyDict(pin_memory=True, prefetch_factor=2)
 
     # Training set.
@@ -211,11 +220,11 @@ def main(**kwargs):
     c.batch_gpu = opts.batch_gpu or opts.batch // opts.gpus
     c.G_kwargs.channel_base = c.D_kwargs.channel_base = opts.cbase
     c.G_kwargs.channel_max = c.D_kwargs.channel_max = opts.cmax
-    c.G_kwargs.mapping_kwargs.num_layers = (8 if opts.cfg == 'stylegan2' else 2) if opts.map_depth is None else opts.map_depth
+    c.G_kwargs.mapping_kwargs.num_layers = (8 if opts.cfg == 'stylegan2' or opts.cfg == 'stylegan2-unet' else 2) if opts.map_depth is None else opts.map_depth
     c.D_kwargs.block_kwargs.freeze_layers = opts.freezed
     c.D_kwargs.epilogue_kwargs.mbstd_group_size = opts.mbstd_group
     c.loss_kwargs.r1_gamma = opts.gamma
-    c.G_opt_kwargs.lr = (0.002 if opts.cfg == 'stylegan2' else 0.0025) if opts.glr is None else opts.glr
+    c.G_opt_kwargs.lr = (0.002 if opts.cfg == 'stylegan2' or opts.cfg == 'stylegan2-unet' else 0.0025) if opts.glr is None else opts.glr
     c.D_opt_kwargs.lr = opts.dlr
     c.metrics = opts.metrics
     c.total_kimg = opts.kimg
@@ -223,6 +232,7 @@ def main(**kwargs):
     c.image_snapshot_ticks = c.network_snapshot_ticks = opts.snap
     c.random_seed = c.training_set_kwargs.random_seed = opts.seed
     c.data_loader_kwargs.num_workers = opts.workers
+    c.loss_kwargs.cutmix = opts.cutmix
 
     # Sanity checks.
     if c.batch_size % c.num_gpus != 0:
@@ -236,7 +246,7 @@ def main(**kwargs):
 
     # Base configuration.
     c.ema_kimg = c.batch_size * 10 / 32
-    if opts.cfg == 'stylegan2':
+    if opts.cfg == 'stylegan2' or opts.cfg == 'stylegan2-unet':
         c.G_kwargs.class_name = 'training.networks_stylegan2.Generator'
         c.loss_kwargs.style_mixing_prob = 0.9 # Enable style mixing regularization.
         c.loss_kwargs.pl_weight = 2 # Enable path length regularization.

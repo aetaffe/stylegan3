@@ -138,7 +138,7 @@ w = G.mapping(z, c, truncation_psi=0.5, truncation_cutoff=8)
 img = G.synthesis(w, noise_mode='const', force_fp32=True)
 ```
 
-Please refer to [`gen_images.py`](./gen_images.py) for complete code example.
+Please refer to [`gen_images.py`](utils/gen_images.py) for complete code example.
 
 ## Preparing datasets
 
