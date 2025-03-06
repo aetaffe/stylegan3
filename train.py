@@ -22,7 +22,7 @@ from metrics import metric_main
 from torch_utils import training_stats
 from torch_utils import custom_ops
 from email.message import EmailMessage
-from password import email_password
+# from password import email_password
 import ssl, smtplib
 #----------------------------------------------------------------------------
 
@@ -314,7 +314,9 @@ def notify_by_email(msg):
 #----------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    notify_by_email('Training is starting on the HPC')
+    hpc = False
+    if hpc:
+        notify_by_email('Training is starting on the HPC')
     main() # pylint: disable=no-value-for-parameter
 
 #----------------------------------------------------------------------------
