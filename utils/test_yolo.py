@@ -1,7 +1,7 @@
 from ultralytics import YOLO
 
 if __name__ == '__main__':
-    model = YOLO('runs/segment/train8/weights/best.pt')
+    model = YOLO('runs/segment/train3/weights/best.pt')
     metrics = model.val()
     print(f'mAP 50 - 95: {metrics.box.map}')
     print(f'mAP 50: {metrics.box.map50}')
